@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { FileMusic, Music } from "lucide-react";
+import { FileMusic, Music, RotateCcw } from "lucide-react";
 import { GradientBlobBackground } from "@/components/home/gradient-bg";
 import { MicButton } from "@/components/home/mic-button";
 import { ChordDisplay } from "@/components/music/chord-display";
@@ -52,11 +52,13 @@ export default function Home() {
       </header>
 
       {/* Main content */}
-      <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-8">
+      <main className="relative z-10 flex-1 flex flex-col items-center px-4 py-8">
+
+        {/* ── Mic section — always visible until result appears ── */}
         {!result && (
-          <>
+          <div className="flex flex-col items-center justify-center flex-1 w-full">
             {/* Title */}
-            <div className="text-center mb-12">
+            <div className="text-center mb-10">
               <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
                 <span className="gradient-text">Hear the harmony</span>
               </h1>
@@ -66,7 +68,7 @@ export default function Home() {
               </p>
             </div>
 
-            {/* ── Centrepiece mic button ── */}
+            {/* Centrepiece mic button */}
             <MicButton onResult={handleResult} />
 
             {/* Secondary: sheet music option */}
@@ -78,19 +80,22 @@ export default function Home() {
                 </button>
               </Link>
             </div>
-          </>
+          </div>
         )}
 
-        {/* ── Results panel (slides up after analysis) ── */}
+        {/* ── Results panel — slides up when analysis is ready ── */}
         {result && (
-          <div className="slide-up w-full max-w-3xl space-y-5">
+          <div className="slide-up w-full max-w-3xl space-y-5 pt-4">
             {/* Header row */}
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-2">
-                <Music className="h-5 w-5 text-violet-400" />
-                <h2 className="text-xl font-bold text-white">
-                  {result.songTitle}
-                </h2>
+            <div className="flex items-start justify-between flex-wrap gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Music className="h-5 w-5 text-violet-400" />
+                  <h2 className="text-xl font-bold text-white">
+                    {result.songTitle}
+                  </h2>
+                </div>
+                <p className="text-white/40 text-xs mt-0.5 ml-7">Analysis complete</p>
               </div>
               <div className="flex items-center gap-2">
                 <Link href={`/practice/${result.id}`}>
@@ -103,10 +108,11 @@ export default function Home() {
                 </Link>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="ghost"
                   onClick={handleReset}
-                  className="border-white/15 text-white/70 hover:text-white hover:bg-white/10"
+                  className="gap-1.5 text-white/50 hover:text-white hover:bg-white/10"
                 >
+                  <RotateCcw className="h-3.5 w-3.5" />
                   New
                 </Button>
               </div>
@@ -114,34 +120,19 @@ export default function Home() {
 
             {/* Key / tempo badges */}
             <div className="flex flex-wrap gap-2">
-              <Badge
-                variant="secondary"
-                className="bg-violet-500/20 text-violet-200 border-violet-500/30 border"
-              >
+              <Badge variant="secondary" className="bg-violet-500/20 text-violet-200 border-violet-500/30 border">
                 Key: {result.key.label}
               </Badge>
-              <Badge
-                variant="secondary"
-                className="bg-violet-500/20 text-violet-200 border-violet-500/30 border"
-              >
+              <Badge variant="secondary" className="bg-violet-500/20 text-violet-200 border-violet-500/30 border">
                 ~{result.tempo} BPM
               </Badge>
-              <Badge
-                variant="secondary"
-                className="bg-violet-500/20 text-violet-200 border-violet-500/30 border"
-              >
+              <Badge variant="secondary" className="bg-violet-500/20 text-violet-200 border-violet-500/30 border">
                 {result.timeSignature[0]}/{result.timeSignature[1]} time
               </Badge>
-              <Badge
-                variant="secondary"
-                className="bg-violet-500/20 text-violet-200 border-violet-500/30 border"
-              >
+              <Badge variant="secondary" className="bg-violet-500/20 text-violet-200 border-violet-500/30 border">
                 {result.melody.length} notes
               </Badge>
-              <Badge
-                variant="secondary"
-                className="bg-violet-500/20 text-violet-200 border-violet-500/30 border"
-              >
+              <Badge variant="secondary" className="bg-violet-500/20 text-violet-200 border-violet-500/30 border">
                 {result.chords.length} chords
               </Badge>
             </div>
@@ -172,8 +163,8 @@ export default function Home() {
               />
             </div>
 
-            {/* Record again link */}
-            <div className="text-center pt-2">
+            {/* Record again */}
+            <div className="text-center pt-2 pb-8">
               <button
                 onClick={handleReset}
                 className="text-xs text-white/30 hover:text-white/60 transition-colors underline underline-offset-2"

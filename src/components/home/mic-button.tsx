@@ -253,8 +253,9 @@ export function MicButton({ onResult }: MicButtonProps) {
       setShowDone(true);
       const t = setTimeout(() => {
         setShowDone(false);
+        setMicState("idle");
         onResult(result);
-      }, 900);
+      }, 800);
       return () => clearTimeout(t);
     }
   }, [result, isAnalyzing, micState, setAnalysis, onResult]);
