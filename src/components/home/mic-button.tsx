@@ -35,6 +35,9 @@ export function MicButton({ onResult }: MicButtonProps) {
   // Canvas ref for Dolby On-style waveform visualiser
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);
+  // Inner-orb canvas for audio-reactive blobs
+  const orbCanvasRef = useRef<HTMLCanvasElement>(null);
+  const orbFrameRef = useRef<number>(0);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -46,27 +49,9 @@ export function MicButton({ onResult }: MicButtonProps) {
     return `${m}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
   }
 
-  // ── Waveform: start capturing from mic ───────────────────────
-  const startWaveform = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const ctx = new AudioContext();
-      audioCtxRef.current = ctx;
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 64;
-      analyserRef.current = analyser;
-      const source = ctx.createMediaStreamSource(stream);
-      source.connect(analyser);
-      sourceRef.current = source;
-      drawWaveform();
-    } catch {
-      // Microphone permission denied — waveform won't show but recording still works
-    }
-  }, []);
-
   const stopWaveform = useCallback(() => {
     cancelAnimationFrame(animFrameRef.current);
+    cancelAnimationFrame(orbFrameRef.current);
     try {
       sourceRef.current?.disconnect();
       analyserRef.current?.disconnect();
@@ -75,11 +60,16 @@ export function MicButton({ onResult }: MicButtonProps) {
     } catch { /* ignore */ }
     analyserRef.current = null;
     audioCtxRef.current = null;
-    // Clear canvas
+    // Clear both canvases
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext("2d");
       ctx?.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    const orb = orbCanvasRef.current;
+    if (orb) {
+      const ctx = orb.getContext("2d");
+      ctx?.clearRect(0, 0, orb.width, orb.height);
     }
   }, []);
 
@@ -138,6 +128,102 @@ export function MicButton({ onResult }: MicButtonProps) {
 
     draw();
   }, []);
+
+  // ── Inner-orb audio-reactive lava blobs ──────────────────────
+  // Three coloured blobs drift inside the orb and expand/contract
+  // with the live audio volume — like lava lamp globs reacting to sound.
+  const drawOrbInner = useCallback(() => {
+    const orb = orbCanvasRef.current;
+    const analyser = analyserRef.current;
+    if (!orb || !analyser) return;
+
+    const ctx = orb.getContext("2d");
+    if (!ctx) return;
+
+    const R = orb.width / 2; // radius of the orb canvas
+    const cx = R;
+    const cy = R;
+
+    // Per-blob state: phase offsets for position drift & shape morph
+    const blobs = [
+      { color: [168, 85, 247],  px: 0.35, py: 0.38, phase: 0,    speed: 0.008 }, // violet
+      { color: [236, 72,  153], px: 0.62, py: 0.55, phase: 2.1,  speed: 0.006 }, // pink
+      { color: [99,  102, 241], px: 0.45, py: 0.65, phase: 4.3,  speed: 0.007 }, // indigo
+    ];
+    const blobPhases = blobs.map((b) => b.phase);
+
+    const timeBuf = new Uint8Array(analyser.frequencyBinCount);
+    let t = 0;
+
+    const draw = () => {
+      orbFrameRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(timeBuf);
+
+      // Average volume 0-1
+      const vol = timeBuf.reduce((s, v) => s + v, 0) / timeBuf.length / 255;
+
+      t += 1;
+      ctx.clearRect(0, 0, orb.width, orb.height);
+
+      // Clip everything inside a circle matching the orb button
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, R - 2, 0, Math.PI * 2);
+      ctx.clip();
+
+      blobs.forEach((blob, i) => {
+        blobPhases[i] += blob.speed + vol * 0.018;
+        const ph = blobPhases[i];
+
+        // Position drifts in a slow Lissajous pattern
+        const driftX = Math.sin(ph * 0.9 + i * 1.3) * R * 0.28 * (1 + vol * 0.5);
+        const driftY = Math.cos(ph * 0.7 + i * 0.9) * R * 0.28 * (1 + vol * 0.5);
+        const bx = cx + (blob.px - 0.5) * R * 1.1 + driftX;
+        const by = cy + (blob.py - 0.5) * R * 1.1 + driftY;
+
+        // Blob radius breathes with volume
+        const baseR = R * (0.38 + i * 0.06);
+        const blobR = baseR * (1 + vol * 0.55 + Math.sin(ph * 1.4) * 0.12);
+
+        // Radial gradient per blob — opaque centre, transparent edge
+        const [r, g, b] = blob.color;
+        const grad = ctx.createRadialGradient(bx, by, 0, bx, by, blobR);
+        grad.addColorStop(0,   `rgba(${r}, ${g}, ${b}, ${0.55 + vol * 0.35})`);
+        grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${0.25 + vol * 0.15})`);
+        grad.addColorStop(1,   `rgba(${r}, ${g}, ${b}, 0)`);
+
+        ctx.globalCompositeOperation = "screen";
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(bx, by, blobR, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      ctx.restore();
+    };
+
+    draw();
+  }, []);
+
+  // ── Waveform: start capturing from mic ───────────────────────
+  const startWaveform = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 64;
+      analyserRef.current = analyser;
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      sourceRef.current = source;
+      drawWaveform();
+      drawOrbInner();
+    } catch {
+      // Microphone permission denied — waveform won't show but recording still works
+    }
+  }, [drawWaveform, drawOrbInner]);
 
   // ── Handle click ─────────────────────────────────────────────
   const handleClick = useCallback(async () => {
@@ -275,6 +361,15 @@ export function MicButton({ onResult }: MicButtonProps) {
               : "0 0 30px rgba(139,92,246,0.4), inset 0 1px 0 rgba(255,255,255,0.12)",
           }}
         >
+          {/* Audio-reactive inner lava blobs — absolute, clipped by button's border-radius */}
+          <canvas
+            ref={orbCanvasRef}
+            width={180}
+            height={180}
+            className={`absolute inset-0 rounded-full transition-opacity duration-500 ${isActive ? "opacity-100" : "opacity-0"}`}
+            style={{ mixBlendMode: "screen" }}
+          />
+
           {/* Inner shine ring */}
           <div className="absolute inset-3 rounded-full border border-white/10" />
 
