@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Mic, CheckCircle2 } from "lucide-react";
+import { Mic, CheckCircle2, X } from "lucide-react";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { useAnalysis } from "@/hooks/use-analysis";
 import { useSessionStore } from "@/stores/session-store";
@@ -28,6 +28,9 @@ export function MicButton({ onResult }: MicButtonProps) {
 
   const [micState, setMicState] = useState<MicState>("idle");
   const [showDone, setShowDone] = useState(false);
+
+  // Container ref — used for click-outside detection
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Canvas ref for Dolby On-style waveform visualiser
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -185,12 +188,45 @@ export function MicButton({ onResult }: MicButtonProps) {
     setShowDone(false);
   }, [stopWaveform, resetRecording]);
 
+  // ── Cancel — abort recording or analyzing and return to idle ──
+  const handleCancel = useCallback(() => {
+    if (micState === "idle" || micState === "done") return;
+    stopWaveform();
+    resetRecording();
+    setMicState("idle");
+    setShowDone(false);
+  }, [micState, stopWaveform, resetRecording]);
+
+  // ── Escape key → cancel ───────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleCancel]);
+
+  // ── Click outside → cancel ────────────────────────────────────
+  useEffect(() => {
+    if (micState === "idle" || micState === "done") return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        handleCancel();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [micState, handleCancel]);
+
   // ── Ring colours by state ─────────────────────────────────────
   const isActive = micState === "recording";
   const isProcessing = micState === "analyzing";
 
   return (
-    <div className="flex flex-col items-center gap-6 select-none">
+    <div ref={containerRef} className="flex flex-col items-center gap-6 select-none">
       {/* Outer rings container */}
       <div className="relative flex items-center justify-center">
 
@@ -308,6 +344,18 @@ export function MicButton({ onResult }: MicButtonProps) {
           <p className="text-emerald-400 text-sm font-semibold">Done!</p>
         )}
       </div>
+
+      {/* Cancel button — visible while recording or analyzing */}
+      {(micState === "recording" || micState === "analyzing") && (
+        <button
+          onClick={handleCancel}
+          className="flex items-center gap-1.5 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/80 text-xs font-medium transition-all duration-200"
+          aria-label="Cancel recording"
+        >
+          <X className="h-3 w-3" />
+          Cancel  ·  or press Esc
+        </button>
+      )}
 
       {/* Reset link (after done or error) */}
       {micState === "done" && !showDone && (
