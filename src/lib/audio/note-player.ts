@@ -2,9 +2,13 @@
  * Simple note playback utility using Tone.js.
  * Provides a singleton synth for playing individual notes
  * and sequences of notes on demand.
+ *
+ * Tone.js is browser-only. It is loaded lazily via dynamic import()
+ * so it never runs during SSR and Turbopack never pre-chunks it for the server.
  */
 
-let toneModule: typeof import("tone") | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let toneModule: any = null;
 let synth: unknown = null;
 
 async function ensureTone() {
@@ -24,7 +28,8 @@ async function ensureSynth() {
       volume: -8,
     }).toDestination();
   }
-  return synth as InstanceType<typeof Tone.PolySynth>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return synth as any;
 }
 
 /**
@@ -71,10 +76,8 @@ export async function playSequence(
   let stopped = false;
   const timers: ReturnType<typeof setTimeout>[] = [];
 
-  // Calculate seconds per beat
   const secPerBeat = 60 / tempo;
 
-  // Schedule each note
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const part = new (Tone.Part as any)(
     (time: number, event: { note: string; duration: string }) => {
@@ -92,41 +95,28 @@ export async function playSequence(
   part.start(0);
   Tone.getTransport().start();
 
-  // Use setTimeout for UI callbacks (reliable, runs on main thread)
   notes.forEach((n, idx) => {
     const delayMs = n.startBeat * secPerBeat * 1000;
     const t = setTimeout(() => {
-      if (!stopped) {
-        onNote?.(idx);
-      }
+      if (!stopped) onNote?.(idx);
     }, delayMs);
     timers.push(t);
   });
 
-  // Schedule end
   if (notes.length > 0) {
     const lastNote = notes[notes.length - 1];
     const endMs = (lastNote.startBeat + lastNote.duration + 0.3) * secPerBeat * 1000;
     const endTimer = setTimeout(() => {
-      if (!stopped) {
-        onDone?.();
-      }
+      if (!stopped) onDone?.();
     }, endMs);
     timers.push(endTimer);
   }
 
-  // Return stop function
   return () => {
     stopped = true;
     timers.forEach(clearTimeout);
-    try {
-      part.stop();
-      part.dispose();
-    } catch {
-      // ignore if already disposed
-    }
-    Tone.getTransport().stop();
-    Tone.getTransport().cancel();
+    try { part.stop(); part.dispose(); } catch { /* ignore */ }
+    try { Tone.getTransport().stop(); Tone.getTransport().cancel(); } catch { /* ignore */ }
   };
 }
 
@@ -134,8 +124,8 @@ export async function playSequence(
  * Dispose of the synth on cleanup.
  */
 export async function disposeSynth() {
-  if (synth && toneModule) {
-    (synth as { dispose: () => void }).dispose();
+  if (synth) {
+    try { (synth as { dispose: () => void }).dispose(); } catch { /* ignore */ }
     synth = null;
   }
 }
